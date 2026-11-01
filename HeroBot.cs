@@ -1,4 +1,4 @@
-﻿// HeroBot.cs -- Hero's Land vision + input engine
+// HeroBot.cs -- Hero's Land vision + input engine
 // Build: PowerShell  Add-Type -Path .\HeroBot.cs -ReferencedAssemblies System.Drawing
 // Target: .NET Framework 4.x / C# 5
 using System;
@@ -86,6 +86,32 @@ public static class HB
     }
 
     public static bool IsForeground(IntPtr hwnd) { return GetForegroundWindow() == hwnd; }
+
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    // plain SetForegroundWindow is refused for background processes; this is the usual workaround
+    public static void ForceForeground(IntPtr hwnd)
+    {
+        try
+        {
+            IntPtr fg = GetForegroundWindow();
+            uint fgThread = GetWindowThreadProcessId(fg, IntPtr.Zero);
+            uint myThread = GetCurrentThreadId();
+            bool attached = false;
+            if (fgThread != 0 && fgThread != myThread) attached = AttachThreadInput(fgThread, myThread, true);
+            if (IsIconic(hwnd)) ShowWindow(hwnd, 9);
+            BringWindowToTop(hwnd);
+            SetWindowPos(hwnd, (IntPtr)(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
+            SetWindowPos(hwnd, (IntPtr)(-2), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
+            SetForegroundWindow(hwnd);
+            if (attached) AttachThreadInput(fgThread, myThread, false);
+        }
+        catch { }
+    }
 
     // ---------------- capture ----------------
     public static Bitmap CaptureClient(IntPtr hwnd)
