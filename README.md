@@ -195,3 +195,29 @@ herosland_bot/
 ```
 
 能打印出 `hunt/fight/...` 状态行就说明环境没问题，剩下只是识别参数的事。
+### 游戏里没反应？先跑自检
+
+```powershell
+.\run_bot.ps1 -SelfTest
+```
+
+它只做三件事：把游戏切前台 → 按 1.3 秒 W → 把鼠标移到屏幕中间，然后打印结果：
+
+```
+--- input self test ---
+window handle : 918912
+foreground    : True
+move test     : background motion 0.672  (>0.05 = the character moved)
+PASS: keyboard reaches the game.
+mouse test    : cursor (158,1035) -> (960,540)
+PASS: mouse movement works.
+```
+
+| 结果 | 含义 | 处理 |
+| --- | --- | --- |
+| `foreground: False` | 抢不到前台焦点 | 关掉"独占全屏"，改成无边框窗口；别在运行时点别的窗口 |
+| `move test` 失败（motion < 0.05） | 键鼠事件被系统丢弃 | **游戏是管理员权限运行、脚本不是** → 右键 `run_bot.cmd` 以管理员身份运行；或杀毒/反作弊拦截 |
+| `mouse test` 失败 | 鼠标没被移动 | 同上，UIPI 拦截 |
+| 两项都 PASS | 输入正常，问题在识别 | 用 `-ShotDir` 存图看识别框 |
+
+> 自检通过但游戏里还是不动，通常是**窗口在跑的过程中失去焦点**：脚本会打印 `[focus] game is not foreground - retry #n`，把鼠标移回游戏窗口即可。
