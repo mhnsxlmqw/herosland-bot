@@ -25,6 +25,8 @@ param(
   [string]$Goto = '',        # e.g. "100,100": walk to that map coordinate at start
   [switch]$SelfTest,
   [switch]$CoordTest,
+  [switch]$TestRespawn,
+  [double]$RespawnDownSec = 5.0,
   [string]$ShotDir = '',
   [int]$ShotEvery = 0
 )
@@ -255,7 +257,7 @@ function Get-Coord([bool]$force = $false) {
     $w = $bmp.Width; $h = $bmp.Height
     # the coordinate label sits at the bottom-right corner of the minimap
     $rx = [int]($w * 0.850); $ry = [int]($h * 0.140)
-    $rw = [int]($w * 0.145); $rh = [int]($h * 0.050)
+    $rw = [int]($w * 0.150); $rh = [int]($h * 0.050)
     $crop = $bmp.Clone((New-Object System.Drawing.Rectangle $rx, $ry, $rw, $rh), $bmp.PixelFormat)
     $bmp.Dispose()
     $scaleUp = 4
@@ -381,6 +383,7 @@ $paused = $false; $prevF9 = $false
 $fgAt = [datetime]::MinValue; $fgTries = 0
 # navigation / respawn recovery
 $navActive = $false; $deadSince = [datetime]::MinValue
+$navStepAt = [datetime]::MinValue; $baseGoneAt = [datetime]::MinValue; $respawnCooldownUntil = [datetime]::MinValue
 $signX = 1; $signY = -1      # measured by calibration: which key increases the world coordinate
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $frameMs = [int](1000 / [math]::Max(1, $Fps))
@@ -571,11 +574,11 @@ while ($true) {
   # the SPIN wheel only exists on the respawn screen -> that is our "you died" signal
   $respawnScene = $false
   try { $respawnScene = [HB]::IsRespawnScene() } catch { $respawnScene = $false }
-  if ($respawnScene) {
+  if (($respawnScene -or $TestRespawn) -and $now -ge $respawnCooldownUntil) {
     if ($deadSince -eq [datetime]::MinValue) { $deadSince = $now }
     elseif (-not $navActive -and ($now - $deadSince).TotalSeconds -gt 1.0) {
-      Write-Host '[nav] respawn screen detected - walking to (100,100), then straight down to (100,96)'
-      $navQueue.Clear(); [void]$navQueue.Add(@(100, 100)); [void]$navQueue.Add(@(100, 96))
+      Write-Host ("[respawn] respawn screen detected - leaving the base: straight down for {0}s" -f $RespawnDownSec)
+      $navQueue.Clear(); [void]$navQueue.Add(@(0, -1))   # 0,-1 = "walk down" marker
       $navTarget = $null; $navActive = $true; $navStuck = 0
       $deadSince = $now.AddHours(1)
     }
@@ -617,21 +620,38 @@ $lastActionAt = [datetime]::Now }
     Write-Host ("[stamina] low {0:N2} -> rest" -f $staNow)
   }
   elseif ($navActive) {
-    $mode = 'nav'; StopAttack
+    $mode = 'respawn'; StopAttack
     if ($null -eq $navTarget) {
-      if ($navQueue.Count -gt 0) { $navTarget = $navQueue[0]; $navQueue.RemoveAt(0); $navStuck = 0 }
+      if ($navQueue.Count -gt 0) { $navTarget = $navQueue[0]; $navQueue.RemoveAt(0); $navStuck = 0; $navStepAt = $now }
       else { $navActive = $false }
     }
     if ($navActive) {
-      $r = Nav-Step $sx $sy
-      if ($r -eq 'arrived') {
-        Write-Host ("[nav] arrived at ({0},{1})" -f $navTarget[0], $navTarget[1])
-        $navTarget = $null
-        if ($navQueue.Count -eq 0) { $navActive = $false; ReleaseKeys; Write-Host '[nav] respawn route finished' }
-      } elseif ($r -eq 'nocoord') {
-        MoveQuadrant $sx ($sy + 220) $sx $sy
-        $navStuck++
-        if ($navStuck -gt 40) { Write-Host '[nav] cannot read coordinates - aborting route'; $navActive = $false; ReleaseKeys }
+      if ($navTarget[0] -eq 0 -and $navTarget[1] -eq -1) {
+        # timed walk straight "down" (screen S) to leave the respawn base
+        SetKey 'W' $false; SetKey 'A' $false; SetKey 'D' $false; SetKey 'S' $true
+        # stop once the SPIN base is out of view (with a margin), plus a hard cap
+        if (-not $respawnScene) { if ($baseGoneAt -eq [datetime]::MinValue) { $baseGoneAt = $now } }
+        else { $baseGoneAt = [datetime]::MinValue }
+        $gone = $false
+        if ($baseGoneAt -ne [datetime]::MinValue) { $gone = (($now - $baseGoneAt).TotalSeconds -gt 0.5) }
+        $cap  = (($now - $navStepAt).TotalSeconds -gt ($RespawnDownSec * 3))
+        if ($gone -or $cap) {
+          ReleaseKeys; $navActive = $false; $navTarget = $null
+          $deadSince = [datetime]::MinValue; $baseGoneAt = [datetime]::MinValue
+          $respawnCooldownUntil = $now.AddSeconds(30)
+          Write-Host '[respawn] left the base - back to farming'
+        }
+      } else {
+        $r = Nav-Step $sx $sy
+        if ($r -eq 'arrived') {
+          Write-Host ("[nav] arrived at ({0},{1})" -f $navTarget[0], $navTarget[1])
+          $navTarget = $null
+          if ($navQueue.Count -eq 0) { $navActive = $false; ReleaseKeys; Write-Host '[nav] route finished' }
+        } elseif ($r -eq 'nocoord') {
+          MoveQuadrant $sx ($sy + 220) $sx $sy
+          $navStuck++
+          if ($navStuck -gt 40) { Write-Host '[nav] cannot read coordinates - aborting route'; $navActive = $false; ReleaseKeys }
+        }
       }
     }
   }
@@ -880,7 +900,7 @@ $lastActionAt = [datetime]::Now }
   }
 
   # anti-idle watchdog: if no input has been produced for 2 s, force a hunt move
-  if (-not $DryRun -and $mode -ne 'rest' -and $mode -ne 'flee' -and ($now - $lastActionAt).TotalSeconds -gt 2.0) {
+  if (-not $DryRun -and $mode -ne 'rest' -and $mode -ne 'flee' -and $mode -ne 'respawn' -and $mode -ne 'nav' -and ($now - $lastActionAt).TotalSeconds -gt 2.0) {
     StopAttack; ReleaseKeys
     $wanderKey = @('W', 'A', 'S', 'D')[(Get-Random -Maximum 4)]
     SetKey $wanderKey $true
