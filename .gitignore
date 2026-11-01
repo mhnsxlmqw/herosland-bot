@@ -1,0 +1,10 @@
+# build / test artefacts
+shots/
+*.png
+*.log
+bin/
+obj/
+
+# local settings
+*.local.ps1
+.vscode/
