@@ -21,7 +21,7 @@ param(
   [int]$Fps = 8,
   [double]$StaminaLow = 0.22,
   [double]$StaminaHigh = 0.55,
-  [double]$ChaseLimitSec = 5.0,
+  [double]$ChaseLimitSec = 2.0,
   [switch]$SelfTest,
   [string]$ShotDir = '',
   [int]$ShotEvery = 0
@@ -365,7 +365,7 @@ while ($true) {
       if ($ig.Until -gt $now -and ([math]::Abs($mx - $ig.X) -lt 70) -and ([math]::Abs($my - $ig.Y) -lt 70)) { $skip = $true; break }
     }
     if ($skip) { continue }
-    $cands += [pscustomobject]@{ X = $mx; Y = $my; D = (Dist $mx $my $sx $sy); Fill = $m.fill; Kind = 'monster'; BX0 = $m.x0; BY0 = $m.y0; BX1 = $m.x1; BY1 = $m.y1 }
+    $cands += [pscustomobject]@{ X = $mx; Y = $my; D = (Dist $mx $my $sx $sy); Fill = $m.fill; Kind = 'monster'; HP = ($m.fill * ($m.x1 - $m.x0 + 1)); BX0 = $m.x0; BY0 = $m.y0; BX1 = $m.x1; BY1 = $m.y1 }
   }
   # a chest is just a monster that does not move: same approach / attack / loot pipeline
   foreach ($ch in $sc.chests) {
@@ -376,16 +376,22 @@ while ($true) {
     if ($skip) { continue }
     $cd = Dist $ch.cx $ch.cy $sx $sy
     if ($cd -gt 900) { continue }
-    $cands += [pscustomobject]@{ X = [double]$ch.cx; Y = [double]$ch.cy; D = $cd; Fill = 1.0; Kind = 'chest'; BX0 = $ch.x0 - 12; BY0 = $ch.y0 - 75; BX1 = $ch.x1 + 12; BY1 = $ch.y0 - 4 }
+    $cands += [pscustomobject]@{ X = [double]$ch.cx; Y = [double]$ch.cy; D = $cd; Fill = 1.0; Kind = 'chest'; HP = (0.5 * ($ch.x1 - $ch.x0 + 1)); BX0 = $ch.x0 - 12; BY0 = $ch.y0 - 75; BX1 = $ch.x1 + 12; BY1 = $ch.y0 - 4 }
   }
 
-  # ---------- target lock ----------
+  # ---------- target selection ----------
+  # priority: the monster with the least ABSOLUTE remaining HP (red bar length = fill x width),
+  # but only targets within 700px. The current target keeps a little hysteresis so the bot
+  # does not flip-flop between two equally hurt monsters.
   $chosen = $null
-  if ($hasTgt) {
-    $best = 1e9
+  $bestHp = 1e9
+  foreach ($c in $cands) {
+    if ($c.D -gt 700) { continue }
+    if ($c.HP -lt $bestHp) { $bestHp = $c.HP; $chosen = $c }
+  }
+  if ($null -ne $chosen -and $hasTgt) {
     foreach ($c in $cands) {
-      $dd = Dist $c.X $c.Y $tgtX $tgtY
-      if ($dd -lt 260 -and $dd -lt $best) { $best = $dd; $chosen = $c }
+      if ((Dist $c.X $c.Y $tgtX $tgtY) -lt 90 -and $c.HP -le $bestHp * 1.25) { $chosen = $c; $bestHp = $c.HP; break }
     }
   }
   if ($null -eq $chosen) {
@@ -671,7 +677,7 @@ $lastActionAt = [datetime]::Now }
     $msgAt = $now
     $ignore = @($ignore | Where-Object { $_.Until -gt $now })
     $handled = @($handled | Where-Object { $_.Until -gt $now })
-    $t = if ($null -ne $chosen) { "($([int]$chosen.X),$([int]$chosen.Y)) d=$([int]$chosen.D) f=$([math]::Round($chosen.Fill,2))" } else { '-' }
+    $t = if ($null -ne $chosen) { "($([int]$chosen.X),$([int]$chosen.Y)) d=$([int]$chosen.D) f=$([math]::Round($chosen.Fill,2)) hp=$([int]$chosen.HP)" } else { '-' }
     $chestInfo = if ($null -ne $chosen -and $chosen.Kind -eq 'chest') { "chest@($([int]$chosen.X),$([int]$chosen.Y)) d=$([int]$chosen.D)" } else { '-' }
     $dp = if ($null -ne $nearDrop) { "beam($([int]$nearDrop.cx),$([int]$nearDrop.cy)) d=$([int]$nearDropD) $(QuadrantName $nearDrop.cx $nearDrop.cy $sx $sy)" } else { '-' }
     $line = "[{0,5:N1}s] {1,-6} self=({2},{3}) hp={4:N2} sta={5:N2} tgt={6} n={7} ply={8} drop={9} loot={10} {11}" -f `
