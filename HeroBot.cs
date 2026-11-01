@@ -554,6 +554,31 @@ public static class HB
         }
         return best;
     }
+    // ---------------- respawn scene: the SPIN wheel at the base ----------------
+    // the wheel's cream ring is a large, very specific colour patch in the top-left area;
+    // it only shows up on the respawn/base screen, so it doubles as a "you died" signal
+    public static bool IsRespawnScene()
+    {
+        if (_px == null) return false;
+        return HasSpinWheel(_px, _W, _H);
+    }
+    public static bool HasSpinWheel(int[] px, int W, int H)
+    {
+        int x0 = (int)(W * 0.18), x1 = (int)(W * 0.40);
+        int y0 = 0, y1 = (int)(H * 0.25);
+        int cream = 0;
+        for (int y = y0; y < y1; y += 2)
+        {
+            int row = y * W;
+            for (int x = x0; x < x1; x += 2)
+            {
+                int c = px[row + x];
+                int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                if (r >= 235 && g >= 215 && b >= 135 && b <= 210 && (r - b) >= 45 && (g - b) >= 35) cream++;
+            }
+        }
+        return cream >= 900;   // ~3600 real pixels at 1080p
+    }
     // ---------------- chests: wooden body with a stone frame, needs 2 hits ----------------
     public class Chest
     {
