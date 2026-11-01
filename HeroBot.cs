@@ -557,6 +557,45 @@ public static class HB
     // ---------------- respawn scene: the SPIN wheel at the base ----------------
     // the wheel's cream ring is a large, very specific colour patch in the top-left area;
     // it only shows up on the respawn/base screen, so it doubles as a "you died" signal
+    // crop the "(x, y)" label, binarize + pad + upscale, save as PNG for OCR
+    public static string SaveCoordImage(string path)
+    {
+        if (_px == null) return null;
+        int w = _W, h = _H;
+        int rx = (int)(w * 0.845), ry = (int)(h * 0.135);
+        int rw = (int)(w * 0.155), rh = (int)(h * 0.055);
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
+        bool[,] on = new bool[rw, rh];
+        for (int y = 0; y < rh; y++)
+            for (int x = 0; x < rw; x++)
+            {
+                int c = _px[(ry + y) * w + (rx + x)];
+                int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                if (r >= 200 && g >= 200 && b >= 200)
+                {
+                    on[x, y] = true;
+                    if (x < minX) minX = x; if (x > maxX) maxX = x;
+                    if (y < minY) minY = y; if (y > maxY) maxY = y;
+                }
+            }
+        if (maxX < 0) return null;
+        int tw = maxX - minX + 1, th = maxY - minY + 1;
+        int scale = 6, pad = 40;
+        using (Bitmap outb = new Bitmap(tw * scale + pad * 2, th * scale + pad * 2, PixelFormat.Format32bppArgb))
+        {
+            using (Graphics g = Graphics.FromImage(outb))
+            {
+                g.Clear(Color.Black);
+                using (SolidBrush br = new SolidBrush(Color.White))
+                    for (int y = 0; y < th; y++)
+                        for (int x = 0; x < tw; x++)
+                            if (on[minX + x, minY + y])
+                                g.FillRectangle(br, pad + x * scale, pad + y * scale, scale, scale);
+            }
+            outb.Save(path, ImageFormat.Png);
+        }
+        return path;
+    }
     public static bool IsRespawnScene()
     {
         if (_px == null) return false;
