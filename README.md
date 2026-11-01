@@ -1,4 +1,4 @@
-﻿# Hero's Land 自动打怪 + 拾取脚本
+# Hero's Land 自动打怪 + 拾取脚本
 
 对着《Hero's Land（英雄之地）》的实机画面做的视觉自动化脚本：**WASD 走位 → 靠近野怪 → 按住左键砍 → 怪死掉后绕尸体一圈把掉落全部捡起来**。
 不攻击玩家，也不攻击带名字的宠物 / Boss。
@@ -172,3 +172,26 @@ herosland_bot/
 
 
 
+
+## 换台电脑跑不起来？先看这里
+
+脚本是纯 PowerShell + 运行时编译的 C#，依赖很少，但 Windows 有几道常见的"拦路虎"：
+
+| 现象 | 原因 | 解决 |
+| --- | --- | --- |
+| 窗口一闪而过 / `找不到 HeroBot.cs` | 只下载了 `run_bot.ps1` 一个文件 | 现在引擎源码已内嵌在 `run_bot.ps1` 里，**单独一个文件也能跑**，首次运行会自动还原 `HeroBot.cs` |
+| `无法加载文件 ... 因为在此系统上禁止运行脚本` | PowerShell 执行策略 / 组策略 | 右键 `run_bot.cmd` 用管理员运行一次，或在 PowerShell 里执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| 下载后提示"已被阻止" | 文件带"来自 Internet"标记 | 右键 `run_bot.ps1` → 属性 → 勾选"解除锁定" → 确定 |
+| 报错或直接被删 | 杀毒软件拦截（脚本会发送键鼠、截屏、编译 C#） | 把文件夹加入杀毒白名单 |
+| `PowerShell 5.1 or newer required` | 系统 PowerShell 太旧 | 升级到 Windows PowerShell 5.1 或 PowerShell 7 |
+| `Hero's Land not running` | 游戏没开，或进程名不是 `HerosLand` | 先启动游戏并进入对局；独占全屏改成"无边框窗口" |
+| 能跑但不动 / 识别不到怪 | 分辨率或 UI 缩放差异过大 | 用 `-ShotDir .\shots -ShotEvery 5` 存图，看识别框是否对准；再调 `-AttackRange` |
+| 一直走但没怪 | 所在区域怪被清空了 | 换个怪物多的区域，或让它自己巡逻 |
+
+自检命令（不接管鼠标键盘，只识别）：
+
+```powershell
+.\run_bot.ps1 -DryRun -DurationSec 5
+```
+
+能打印出 `hunt/fight/...` 状态行就说明环境没问题，剩下只是识别参数的事。
