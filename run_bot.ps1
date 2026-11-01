@@ -384,6 +384,7 @@ $fgAt = [datetime]::MinValue; $fgTries = 0
 # navigation / respawn recovery
 $navActive = $false; $deadSince = [datetime]::MinValue
 $navStepAt = [datetime]::MinValue; $baseGoneAt = [datetime]::MinValue; $respawnCooldownUntil = [datetime]::MinValue
+$safeExitAt = [datetime]::MinValue
 $signX = 1; $signY = -1      # measured by calibration: which key increases the world coordinate
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $frameMs = [int](1000 / [math]::Max(1, $Fps))
@@ -656,17 +657,18 @@ $lastActionAt = [datetime]::Now }
     }
   }
   elseif ($inSafe) {
-    # inside the portal: attacks do nothing, so loot and heal, then walk out
+    # inside the portal: attacks do nothing, so loot and heal, then leave deliberately
     $mode = 'safe'; StopAttack
     if ($null -ne $nearDrop -and $nearDropD -lt 420) {
       if ($nearDropD -gt 45) { MoveQuadrant $nearDrop.cx $nearDrop.cy $sx $sy } else { ReleaseKeys }
     } elseif ($hp -lt 0.92) {
       ReleaseKeys                     # stand still and regenerate
     } else {
-      # healthy and nothing to pick up: leave the safe zone
-      $dx = $sx - $portalX; $dy = $sy - $portalY
-      if ([math]::Abs($dx) -lt 1 -and [math]::Abs($dy) -lt 1) { $dx = 1 }
-      MoveQuadrant ($sx + $dx) ($sy + $dy) $sx $sy
+      # leave the safe zone in a straight line (S). Random "away from the portal" steering
+      # made the bot circle inside the base - this is deterministic instead.
+      SetKey 'W' $false; SetKey 'A' $false; SetKey 'D' $false; SetKey 'S' $true
+      if ($safeExitAt -eq [datetime]::MinValue) { $safeExitAt = $now }
+      if (($now - $safeExitAt).TotalSeconds -gt 25) { ReleaseKeys; $safeExitAt = [datetime]::MinValue }
     }
   }
   elseif ($null -ne $sc.portal -and $hp -lt 0.45 -and -not $inSafe) {
