@@ -240,6 +240,11 @@ public static class HB
         int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
         return r >= 230 && g >= 100 && g <= 190 && b <= 85 && (r - b) >= 145;
     }
+    static bool IsMagenta(int c)
+    {
+        int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+        return r >= 165 && b >= 165 && g <= 120 && (r - g) >= 85 && (b - g) >= 85;
+    }
     static bool IsTrack(int c)
     {
         int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
@@ -295,7 +300,7 @@ public static class HB
         public bool nameTag;   // name plate
         public bool stacked;   // player-style multi bar plate
         public int cx, cy;
-        public string ColorName() { return color == 0 ? "red" : color == 1 ? "green" : color == 2 ? "blue" : color == 3 ? "orange" : "track"; }
+        public string ColorName() { return color == 0 ? "red" : color == 1 ? "green" : color == 2 ? "blue" : color == 3 ? "orange" : color == 5 ? "elite" : "track"; }
         public int Width { get { return x1 - x0 + 1; } }
     }
 
@@ -336,7 +341,7 @@ public static class HB
         int rw = roiX1 - roiX0, rh = roiY1 - roiY0;
         if (rw <= 0 || rh <= 0) return new List<Bar>();
 
-        byte[] mR = new byte[rw * rh], mG = new byte[rw * rh], mB = new byte[rw * rh], mO = new byte[rw * rh], mT = new byte[rw * rh];
+        byte[] mR = new byte[rw * rh], mG = new byte[rw * rh], mB = new byte[rw * rh], mO = new byte[rw * rh], mT = new byte[rw * rh], mP = new byte[rw * rh];
         for (int y = 0; y < rh; y++)
         {
             int src = (y + roiY0) * W + roiX0, dst = y * rw;
@@ -347,6 +352,7 @@ public static class HB
                 else if (IsGreen(c)) mG[dst + x] = 1;
                 else if (IsBlue(c)) mB[dst + x] = 1;
                 else if (IsOrange(c)) mO[dst + x] = 1;
+                else if (IsMagenta(c)) mP[dst + x] = 1;
                 else if (IsTrack(c)) mT[dst + x] = 1;
             }
         }
@@ -355,9 +361,9 @@ public static class HB
         int minW = Math.Max(24, (int)(46 * s)), maxW = (int)(460 * s);
         List<Bar> bars = new List<Bar>();
 
-        for (int ci = 0; ci < 5; ci++)
+        for (int ci = 0; ci < 6; ci++)
         {
-            byte[] m = ci == 0 ? mR : ci == 1 ? mG : ci == 2 ? mB : ci == 3 ? mO : mT;
+            byte[] m = ci == 0 ? mR : ci == 1 ? mG : ci == 2 ? mB : ci == 3 ? mO : ci == 4 ? mT : mP;
             List<int[]> comps = Components(m, rw, rh, Math.Max(30, (int)(70 * s)));
             foreach (int[] c in comps)
             {
@@ -426,7 +432,7 @@ public static class HB
             for (int x = x0; x <= x1; x++)
             {
                 int c = px[y * W + x];
-                bool ok = color == 0 ? IsRed(c) : color == 1 ? IsGreen(c) : color == 2 ? IsBlue(c) : color == 4 ? IsTrack(c) : IsOrange(c);
+                bool ok = color == 0 ? IsRed(c) : color == 1 ? IsGreen(c) : color == 2 ? IsBlue(c) : color == 4 ? IsTrack(c) : color == 5 ? IsMagenta(c) : IsOrange(c);
                 if (ok) hit++;
                 tot++;
             }
@@ -885,6 +891,11 @@ public static class HB
             {
                 if (b.stacked || b.nameTag) sc.players.Add(b);
                 else if (b.badge) sc.monsters.Add(b);
+                else sc.named.Add(b);
+            }
+            else if (b.color == 5)
+            {
+                if (b.badge || !b.nameTag) sc.monsters.Add(b);   // elite / advanced monster
                 else sc.named.Add(b);
             }
             else if (b.color == 4)
