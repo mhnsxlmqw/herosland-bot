@@ -436,22 +436,33 @@ public static class HB
         return best;
     }
 
+    // level badge = a compact dark disc/square with white digits inside, sitting left of the bar.
+    // Stone props and decorations have wide, irregular dark areas and are rejected.
     static bool HasBadge(int[] px, int W, int H, Bar b, double s)
     {
-        int x0 = Math.Max(0, b.x0 - (int)(42 * s)), x1 = b.x0 - 1;
+        int x0 = Math.Max(0, b.x0 - (int)(42 * s)), x1 = b.x0 - 2;
         int y0 = Math.Max(0, b.y0 - (int)(8 * s)), y1 = Math.Min(H - 1, b.y1 + (int)(8 * s));
         if (x1 <= x0 || y1 <= y0) return false;
-        int dark = 0, white = 0;
-        for (int y = y0; y <= y1; y++)
-            for (int x = x0; x <= x1; x++)
-            {
-                int c = px[y * W + x];
-                if (IsDark(c)) dark++;
-                if (IsWhiteish(c)) white++;
-            }
-        return dark > (int)(220 * s * s) && white > (int)(12 * s * s);
+        int w = x1 - x0 + 1, h = y1 - y0 + 1;
+        byte[] m = new byte[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (IsDark(px[(y0 + y) * W + x0 + x])) m[y * w + x] = 1;
+        List<int[]> comps = Components(m, w, h, 60);
+        foreach (int[] c in comps)
+        {
+            int bw = c[2] - c[0] + 1, bh = c[3] - c[1] + 1;
+            if (bw < (int)(16 * s) || bw > (int)(42 * s)) continue;
+            if (bh < (int)(16 * s) || bh > (int)(42 * s)) continue;
+            if ((double)c[4] / (bw * bh) < 0.45) continue;
+            int white = 0;
+            for (int y = c[1]; y <= c[3]; y++)
+                for (int x = c[0]; x <= c[2]; x++)
+                    if (IsWhiteish(px[(y0 + y) * W + x0 + x])) white++;
+            if (white >= (int)(6 * s * s)) return true;
+        }
+        return false;
     }
-
     static bool HasNamePill(int[] px, int W, int H, Bar b, double s)
     {
         int up = BandText(px, W, H, b.x0, b.x1, b.y0 - (int)(30 * s), b.y0 - (int)(2 * s));
