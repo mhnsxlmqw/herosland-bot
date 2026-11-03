@@ -571,6 +571,42 @@ public static class HB
         }
         return best;
     }
+    // ---------------- water: cannot attack and stamina drains ----------------
+    static bool IsWater(int c)
+    {
+        int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+        return r >= 75 && r <= 135 && g >= 210 && g <= 250 && b >= 220 && b <= 255;
+    }
+
+    // fraction of water pixels in a small box around a client point
+    public static double WaterAt(int cx, int cy)
+    {
+        if (_px == null) return 0;
+        int rad = 14, hit = 0, tot = 0;
+        for (int y = cy - rad; y <= cy + rad; y += 2)
+            for (int x = cx - rad; x <= cx + rad; x += 2)
+            {
+                if (x < 0 || y < 0 || x >= _W || y >= _H) continue;
+                tot++;
+                if (IsWater(_px[y * _W + x])) hit++;
+            }
+        return tot > 0 ? (double)hit / tot : 0;
+    }
+
+    // 0=up 1=right 2=down 3=left; picks the direction with the least water ahead
+    public static int WaterEscapeDir(int sx, int sy, int dist)
+    {
+        int[] dx = { 0, 1, 0, -1 };
+        int[] dy = { -1, 0, 1, 0 };
+        int best = 0; double bestScore = 1.0;
+        for (int i = 0; i < 4; i++)
+        {
+            int px2 = sx + dx[i] * dist, py2 = sy + dy[i] * dist;
+            double sc = WaterAt(px2, py2);
+            if (sc < bestScore) { bestScore = sc; best = i; }
+        }
+        return best;
+    }
     // ---------------- respawn scene: the SPIN wheel at the base ----------------
     // the wheel's cream ring is a large, very specific colour patch in the top-left area;
     // it only shows up on the respawn/base screen, so it doubles as a "you died" signal
