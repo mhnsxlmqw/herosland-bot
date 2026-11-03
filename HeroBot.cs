@@ -215,6 +215,7 @@ public static class HB
         sc.labels = FindGroundLabels(_px, _W, _H, scale, bars);
         sc.drops = FindDrops(_px, _W, _H, scale, sc.self);
         sc.chests = FindChests(_px, _W, _H, scale);
+        sc.resources = FindResources(_px, _W, _H, scale, bars);
         sc.portal = FindPortal(_px, _W, _H, scale);
         return sc;
     }
@@ -314,6 +315,7 @@ public static class HB
         public List<Label> labels = new List<Label>();
         public List<Drop> drops = new List<Drop>();
         public List<Chest> chests = new List<Chest>();
+        public List<Resource> resources = new List<Resource>();
         public Portal portal = null;
         public Bar stamina = null;      // stamina bar under the self plate
         public Bar hudStamina = null;   // stamina bar in the bottom HUD
@@ -570,6 +572,45 @@ public static class HB
             if (best == null || c[4] > best.r * best.r) { best = new Portal(); best.cx = cx; best.cy = cy; best.r = Math.Max(w, h) / 2; }
         }
         return best;
+    }
+    // ---------------- harvestable resources: dark bar with a small gold marker at its left ----------------
+    public class Resource
+    {
+        public int x0, y0, x1, y1;
+        public int cx, cy;
+    }
+
+    static bool IsGold(int c)
+    {
+        int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+        return r >= 165 && g >= 100 && b <= 125 && (r - b) >= 80 && (g - b) >= 50;
+    }
+
+    // the durability bar is the same dark grey track as an empty HP bar, but it carries
+    // a small gold chunk at its left end and has no level badge / name plate
+    public static List<Resource> FindResources(int[] px, int W, int H, double s, List<Bar> bars)
+    {
+        List<Resource> res = new List<Resource>();
+        foreach (Bar b in bars)
+        {
+            if (b.color != 4) continue;
+            if (b.badge || b.nameTag) continue;
+            int bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1;
+            if (bw < (int)(45 * s) || bw > (int)(260 * s)) continue;
+            if (bh < (int)(6 * s) || bh > (int)(28 * s)) continue;
+            int x0 = Math.Max(0, b.x0 - (int)(34 * s)), x1 = Math.Min(W - 1, b.x0 + (int)(24 * s));
+            int y0 = Math.Max(0, b.y0 - (int)(10 * s)), y1 = Math.Min(H - 1, b.y1 + (int)(10 * s));
+            int gold = 0;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    if (IsGold(px[y * W + x])) gold++;
+            if (gold < 6) continue;
+            Resource rr = new Resource();
+            rr.x0 = b.x0; rr.y0 = b.y0; rr.x1 = b.x1; rr.y1 = b.y1;
+            rr.cx = (b.x0 + b.x1) / 2; rr.cy = b.y1;
+            res.Add(rr);
+        }
+        return res;
     }
     // ---------------- water: cannot attack and stamina drains ----------------
     static bool IsWater(int c)
