@@ -166,6 +166,21 @@ public static class HB
 
     public static Bitmap FrameCopy() { return _bmp == null ? null : new Bitmap(_bmp); }
 
+    // load a PNG into the frame cache (used by the offline detector tests)
+    public static bool LoadFrame(string path)
+    {
+        try
+        {
+            Bitmap b = LoadPng(path);
+            if (_bmp != null) _bmp.Dispose();
+            _bmp = b;
+            _W = b.Width; _H = b.Height;
+            _px = ToPixels(_bmp, out _W, out _H);
+            return true;
+        }
+        catch { return false; }
+    }
+
     // ---- world motion: the camera keeps the player centred, so "am I moving?"
     //      can only be answered by how much the background scrolls between frames ----
     static int[] _prevSample;
@@ -572,6 +587,49 @@ public static class HB
             if (best == null || c[4] > best.r * best.r) { best = new Portal(); best.cx = cx; best.cy = cy; best.r = Math.Max(w, h) / 2; }
         }
         return best;
+    }
+    // ---------------- teleport destination dialog ("选择传送点") ----------------
+    // the modal is a big #1D2127 panel; its frame colour is unique enough to detect by fraction
+    public static int[] FindTeleportDialog()
+    {
+        if (_px == null) return null;
+        int W = _W, H = _H;
+        int x0 = (int)(W * 0.20), x1 = (int)(W * 0.80);
+        int y0 = (int)(H * 0.15), y1 = (int)(H * 0.85);
+        int hit = 0, tot = 0;
+        int bx0 = int.MaxValue, by0 = int.MaxValue, bx1 = -1, by1 = -1;
+        for (int y = y0; y < y1; y += 3)
+        {
+            int row = y * W;
+            for (int x = x0; x < x1; x += 3)
+            {
+                int c = _px[row + x];
+                int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                tot++;
+                if (Math.Abs(r - 29) <= 11 && Math.Abs(g - 33) <= 11 && Math.Abs(b - 39) <= 13)
+                {
+                    hit++;
+                    if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+                    if (y < by0) by0 = y; if (y > by1) by1 = y;
+                }
+            }
+        }
+        if (tot == 0 || (double)hit / tot < 0.03) return null;
+        if (bx1 < 0) return null;
+
+        // the close button is a white cross on the panel's top-right corner
+        int sx0 = Math.Max(0, bx1 - (int)(W * 0.08)), sx1 = Math.Min(W - 1, bx1 + (int)(W * 0.02));
+        int sy0 = Math.Max(0, by0 - (int)(H * 0.02)), sy1 = Math.Min(H - 1, by0 + (int)(H * 0.10));
+        int cnt = 0, sumX = 0, sumY = 0;
+        for (int y = sy0; y <= sy1; y++)
+            for (int x = sx0; x <= sx1; x++)
+            {
+                int c = _px[y * W + x];
+                int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                if (r >= 225 && g >= 225 && b >= 225) { cnt++; sumX += x; sumY += y; }
+            }
+        if (cnt >= 50) return new int[] { 1, sumX / cnt, sumY / cnt };
+        return new int[] { 1, bx1 - (int)(W * 0.015), by0 + (int)(H * 0.015) };
     }
     // ---------------- harvestable resources: dark bar with a small gold marker at its left ----------------
     public class Resource
